@@ -2,3 +2,4 @@
 *.err
 *.tmp
 .claude/
+dist/

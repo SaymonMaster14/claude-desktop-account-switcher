@@ -1,0 +1,25 @@
+CLAUDE ACCOUNT SWITCHER
+=======================
+
+PT
+1. Extraia esta pasta (botão direito > Extrair tudo).
+2. Dê dois cliques em Install.cmd. Não precisa de administrador.
+3. Procure o círculo laranja na bandeja, perto do relógio (seta ^).
+4. Clique nele > "Salvar conta atual como..." e dê um nome.
+5. Para outra conta: clique nele > "Adicionar conta nova...".
+Depois é só clicar no ícone e escolher a conta.
+
+Desinstalar: dois cliques em Uninstall.cmd.
+Tudo roda no seu PC. Nada é enviado para a internet.
+Mais detalhes: https://github.com/SaymonMaster14/claude-desktop-account-switcher
+
+EN
+1. Extract this folder (right-click > Extract all).
+2. Double-click Install.cmd. No admin needed.
+3. Look for the orange circle in the tray near the clock (^ arrow).
+4. Click it > "Save current account as..." and name it.
+5. For another account: click it > "Add new account...".
+Then just click the icon and pick an account.
+
+Uninstall: double-click Uninstall.cmd.
+Everything runs on your PC. Nothing is sent to the internet.

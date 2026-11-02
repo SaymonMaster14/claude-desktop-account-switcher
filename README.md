@@ -19,8 +19,8 @@
 
 ## Instalar
 
-1. Baixe o repositório (**Code > Download ZIP**) e extraia.
-2. Dê dois cliques em **`Install.cmd`**. Não precisa de administrador.
+1. Baixe o **`Claude-Account-Switcher.zip`** na [página de Releases](../../releases/latest) e extraia (botão direito > Extrair tudo).
+2. Dê dois cliques em **`Install.cmd`** (feche o app Claude antes só se quiser; não precisa). Não precisa de administrador. Se o Windows avisar "proteger seu PC", clique em *Mais informações > Executar assim mesmo*: o código é aberto e está neste repositório.
 3. Procure o círculo laranja na bandeja, perto do relógio. No Windows 11 ele costuma ficar escondido na seta **^**; arraste para a barra para deixar sempre visível.
 
 Requisitos: Windows 10/11 e o app Claude Desktop instalado. Usa só o PowerShell que já vem no Windows.
@@ -85,7 +85,7 @@ A Windows tray icon to switch accounts in the **Claude Desktop app** with one cl
 
 **Features:** one-click switching from the tray · unlimited accounts · guided "add account" (no terminal) · Code-tab sessions shared across accounts on every switch (toggleable) · no prompts on switch · automatic backup before each switch (last 10 kept) · optional start with Windows.
 
-**Install:** download the ZIP, extract, double-click `Install.cmd` (no admin). Look for the orange circle in the tray (Windows 11 hides it under the `^` arrow; drag it out to pin it).
+**Install:** download `Claude-Account-Switcher.zip` from the [latest release](../../releases/latest), extract, double-click `Install.cmd` (no admin; if Windows SmartScreen warns, choose *More info > Run anyway*, the source is right here). Look for the orange circle in the tray (Windows 11 hides it under the `^` arrow; drag it out to pin it).
 
 **Use:** sign in with your current account → tray icon → *Save current account as...* → to add another: *Add new account...*, sign in with it, open the **Code** tab once, click OK → then just pick an account from the menu.
 
