@@ -44,7 +44,7 @@ function Update-Icon {
     $script:iconKey = $key
     $old = $ni.Icon
     $ni.Icon = New-TrayIcon $(if ($cur) { $cur.Substring(0, 1).ToUpper() } else { '?' })
-    $ni.Text = if ($cur) { "Claude: $cur" } else { 'Claude' }
+    $ni.Text = ($(if ($cur) { "Claude: $cur" } else { 'Claude' }) + " (v$AppVersion)")
     if ($old) { $old.Dispose() }
 }
 

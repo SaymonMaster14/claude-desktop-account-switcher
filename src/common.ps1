@@ -14,6 +14,7 @@ $AuthKeys = @('oauth:tokenCache', 'oauth:tokenCacheV2', 'lastKnownAccountUuid') 
 $AuthFiles = @('Network\Cookies', 'Network\Cookies-journal')
 $AuthDirs  = @('Local Storage', 'Session Storage', 'IndexedDB')
 $BackupsToKeep = 10
+$AppVersion = '1.1.0'
 
 # ---------------------------------------------------------------- i18n
 $Lang = if ($env:DSWAP_LANG) { $env:DSWAP_LANG } elseif ((Get-UICulture).TwoLetterISOLanguageName -eq 'pt') { 'pt' } else { 'en' }
