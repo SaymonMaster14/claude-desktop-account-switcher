@@ -14,7 +14,8 @@ $AuthKeys = @('oauth:tokenCache', 'oauth:tokenCacheV2', 'lastKnownAccountUuid') 
 $AuthFiles = @('Network\Cookies', 'Network\Cookies-journal')
 $AuthDirs  = @('Local Storage', 'Session Storage', 'IndexedDB')
 $BackupsToKeep = 10
-$AppVersion = '1.1.0'
+$AppVersion = '1.1.1'
+$DiagFile = Join-Path $Store 'diagnostics.log'
 
 # ---------------------------------------------------------------- i18n
 $Lang = if ($env:DSWAP_LANG) { $env:DSWAP_LANG } elseif ((Get-UICulture).TwoLetterISOLanguageName -eq 'pt') { 'pt' } else { 'en' }
@@ -129,6 +130,15 @@ function Say([string]$msg, [string]$color) {
     if ($env:DSWAP_RESULT) { try { [IO.File]::AppendAllText($env:DSWAP_RESULT, "$msg`r`n", (New-Object Text.UTF8Encoding $false)) } catch {} }
 }
 function Die([string]$msg) { throw $msg }
+# Local-only troubleshooting trail (no tokens; account ids are cut to 8 characters). Kept small.
+function Write-Diag([string]$msg) {
+    try {
+        New-Item -ItemType Directory -Force $Store | Out-Null
+        if ((Test-Path $DiagFile) -and (Get-Item $DiagFile).Length -gt 100KB) { Remove-Item $DiagFile -Force }
+        [IO.File]::AppendAllText($DiagFile, ("{0} {1}`r`n" -f (Get-Date -Format 's'), $msg), (New-Object Text.UTF8Encoding $false))
+    } catch {}
+}
+function Short([string]$u) { if ($u) { $u.Substring(0, [Math]::Min(8, $u.Length)) } else { '-' } }
 function Write-Utf8([string]$path, [string]$text) { [IO.File]::WriteAllText($path, $text, (New-Object Text.UTF8Encoding $false)) }
 function Read-Json([string]$path) { Get-Content $path -Raw -Encoding UTF8 | ConvertFrom-Json }
 

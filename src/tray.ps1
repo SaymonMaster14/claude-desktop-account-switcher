@@ -84,6 +84,7 @@ function Ask-Name([string]$prompt) {
 # Runs dswap.ps1 hidden; $then (optional scriptblock) runs after a successful exit.
 function Start-Dswap([string[]]$dargs, [string]$what, [scriptblock]$then = $null) {
     if ($script:proc -and -not $script:proc.HasExited) { Show-Balloon (T 'b_busy'); return }
+    Write-Diag ("run: dswap " + ($dargs -join ' '))
     $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$dswap`"") + $dargs
     Remove-Item $LogFile, "$LogFile.out", "$LogFile.err" -ErrorAction SilentlyContinue
     $env:DSWAP_RESULT = $LogFile   # dswap writes its messages here as UTF-8 (the console output is in the OEM code page)
@@ -142,7 +143,9 @@ $menu.add_Opening({
     Update-Icon
     $cur = Get-Current
     $names = Get-ProfileNames
-    $h = $menu.Items.Add((T 'm_switch')); $h.Enabled = $false
+    $live = Get-LiveInfo
+    Write-Diag ("menu v{0} loggedIn={1} live={2} current={3} profiles=[{4}]" -f $AppVersion, $live.LoggedIn, (Short $live.Uuid), $cur, (($names | ForEach-Object { "$_=" + (Short (Get-ProfileUuid $_)) }) -join ' '))
+    $h = $menu.Items.Add(((T 'm_switch') + " (v$AppVersion)")); $h.Enabled = $false
     foreach ($n in $names) {
         $it = $menu.Items.Add($n); $it.Tag = $n; $it.Checked = ($n -eq $cur)
         $it.add_Click({ param($s, $e)
