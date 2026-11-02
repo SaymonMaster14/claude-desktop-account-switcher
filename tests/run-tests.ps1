@@ -22,6 +22,15 @@ function Cfg { Get-Content "$data\config.json" -Raw | ConvertFrom-Json }
 function Has([string]$uuid, [string]$name) { [bool](Get-ChildItem "$data\claude-code-sessions\$uuid" -Recurse -Filter "$name.json" -ErrorAction SilentlyContinue) }
 
 try {
+    Write-Host 'scripts'
+    foreach ($f in Get-ChildItem (Join-Path $PSScriptRoot '..') -Recurse -Filter *.ps1) {
+        $e = $null; [void][Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$e)
+        Check "parses: $($f.Name)" ($e.Count -eq 0)
+    }
+    Check 'tray caches the process handle (fixes false "failed" notice)' ((Get-Content (Join-Path $PSScriptRoot '..\src\tray.ps1') -Raw) -match '\$script:proc\.Handle')
+    $bad = Ds switch does-not-exist
+    Check 'failures exit non-zero and print an ERROR: line for the tray' ($bad.Code -ne 0 -and $bad.Out -match 'ERROR:')
+
     Write-Host 'save two accounts'
     Login 'uuid-A' 'A'; Session 'uuid-A' 'orgA' 'local_a1' (Get-Date).AddDays(-2); Session 'uuid-A' 'orgA' 'local_a2' (Get-Date).AddDays(-2)
     Check 'save a' ((Ds save a).Code -eq 0)

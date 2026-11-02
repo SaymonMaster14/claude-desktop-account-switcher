@@ -67,6 +67,7 @@ function Start-Dswap([string[]]$dargs, [string]$what, [scriptblock]$then = $null
     $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$dswap`"") + $dargs
     Remove-Item $LogFile, "$LogFile.err" -ErrorAction SilentlyContinue
     $script:proc = Start-Process powershell.exe -ArgumentList $a -WindowStyle Hidden -PassThru -RedirectStandardOutput $LogFile -RedirectStandardError "$LogFile.err"
+    $null = $script:proc.Handle   # without this, ExitCode can come back empty for a fast-exiting process and a success looks like a failure
     $script:what = $what
     $script:then = $then
     $timer.Start()
@@ -77,7 +78,10 @@ $timer.add_Tick({
         $timer.Stop()
         Update-Icon
         $then = $script:then; $script:then = $null
-        if ($script:proc.ExitCode -eq 0) {
+        $code = $script:proc.ExitCode
+        if ($code -eq 0 -or $null -eq $code) {   # empty code = the process ended cleanly but we could not read it; failures always print an ERROR line (checked below)
+            $errLine = @(Get-Content $LogFile -ErrorAction SilentlyContinue | Where-Object { $_ -match '^ERROR:' }) | Select-Object -Last 1
+            if ($errLine) { Show-Balloon (T 'b_failed' ("$errLine" -replace '^ERROR:\s*', '')) 'Error' 8000; return }
             if ($script:what) { Show-Balloon $script:what }
             if ($then) { & $then }
         }
