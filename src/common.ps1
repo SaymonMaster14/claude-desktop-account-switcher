@@ -6,7 +6,6 @@ $TestMode = [bool]$env:DSWAP_DATA   # tests point DSWAP_DATA at a fake data fold
 $Store    = if ($env:DSWAP_STORE) { $env:DSWAP_STORE } else { Join-Path $env:USERPROFILE '.claude-desktop-swap' }
 $Profiles = Join-Path $Store 'profiles'
 $Backups  = Join-Path $Store 'backups'
-$StateFile    = Join-Path $Store 'state.json'
 $SettingsFile = Join-Path $Store 'settings.json'
 $LogFile      = Join-Path $Store 'tray.log'
 
@@ -31,7 +30,7 @@ $Strings = @{
         no_profile   = "Perfil '{0}' não existe."
         exists       = "Já existe um perfil chamado '{0}'."
         no_config    = 'config.json do Claude não encontrado em {0}'
-        no_login     = 'Nenhum login encontrado (você está logado no app?).'
+        no_login     = 'Nenhum login encontrado. Termine de entrar na conta no app (mesmo que ela não tenha plano) e tente de novo.'
         same_account = "Essa é a mesma conta do perfil '{0}'. Entre com uma conta diferente."
         unnamed      = 'A conta atual ainda não tem nome. Salve primeiro (Salvar conta atual como...) para não perder o login.'
         saved        = "Conta salva como '{0}'."
@@ -57,8 +56,8 @@ $Strings = @{
         m_exit       = 'Sair'
         p_save       = 'Nome para a conta que está logada agora (ex.: pessoal):'
         p_add        = 'Nome da conta NOVA (ex.: trabalho):'
-        p_add_intro  = "Vou fechar o Claude, guardar a conta atual ('{0}') e abrir o app deslogado para você entrar na conta nova. Continuar?"
-        p_add_wait   = "Entre com a conta nova no app, espere carregar e abra a aba Code uma vez.`n`nQuando terminar, clique em OK. Cancelar volta para '{0}'."
+        p_add_intro  = "Vou fechar o Claude, guardar a conta atual e abrir o app deslogado para você entrar na conta nova. Continuar?"
+        p_add_wait   = "Entre com a conta nova no app e espere carregar (se a conta tiver plano, abra a aba Code uma vez).`n`nQuando terminar, clique em OK. Cancelar volta para a conta anterior."
         p_remove     = "Remover o perfil '{0}'? O login dessa conta guardado aqui será apagado (você poderá adicionar de novo)."
         b_working    = 'Trabalhando...'
         b_busy       = 'Aguarde a operação anterior terminar.'
@@ -78,7 +77,7 @@ $Strings = @{
         no_profile   = "Profile '{0}' does not exist."
         exists       = "A profile named '{0}' already exists."
         no_config    = 'Claude config.json not found in {0}'
-        no_login     = 'No login found (are you signed in to the app?).'
+        no_login     = 'No login found. Finish signing in to the account in the app (even if it has no plan) and try again.'
         same_account = "That is the same account as profile '{0}'. Sign in with a different account."
         unnamed      = 'The current account has no name yet. Save it first (Save current account as...) so the login is not lost.'
         saved        = "Account saved as '{0}'."
@@ -103,8 +102,8 @@ $Strings = @{
         m_exit       = 'Exit'
         p_save       = 'Name for the account that is signed in right now (e.g. personal):'
         p_add        = 'Name for the NEW account (e.g. work):'
-        p_add_intro  = "I will close Claude, store the current account ('{0}') and reopen the app signed out so you can sign in with the new account. Continue?"
-        p_add_wait   = "Sign in with the new account in the app, wait for it to load and open the Code tab once.`n`nWhen you are done, click OK. Cancel goes back to '{0}'."
+        p_add_intro  = "I will close Claude, store the current account and reopen the app signed out so you can sign in with the new account. Continue?"
+        p_add_wait   = "Sign in with the new account in the app and wait for it to load (if the account has a plan, open the Code tab once).`n`nWhen you are done, click OK. Cancel goes back to the previous account."
         p_remove     = "Remove profile '{0}'? The login stored here for that account will be deleted (you can add it again later)."
         b_working    = 'Working...'
         b_busy       = 'Please wait for the previous operation to finish.'
@@ -122,6 +121,12 @@ function T([string]$key, $a) {
 }
 
 # ---------------------------------------------------------------- helpers
+# Status lines go to the console and, when DSWAP_RESULT is set (the tray does that), to a UTF-8 file the tray reads back,
+# so accented text survives regardless of the console code page.
+function Say([string]$msg, [string]$color) {
+    if ($color) { Write-Host $msg -ForegroundColor $color } else { Write-Host $msg }
+    if ($env:DSWAP_RESULT) { try { [IO.File]::AppendAllText($env:DSWAP_RESULT, "$msg`r`n", (New-Object Text.UTF8Encoding $false)) } catch {} }
+}
 function Die([string]$msg) { throw $msg }
 function Write-Utf8([string]$path, [string]$text) { [IO.File]::WriteAllText($path, $text, (New-Object Text.UTF8Encoding $false)) }
 function Read-Json([string]$path) { Get-Content $path -Raw -Encoding UTF8 | ConvertFrom-Json }
@@ -180,7 +185,7 @@ function Stop-App {
     if ($TestMode) { return }
     $procs = @(Get-AppProcs)
     if (-not $procs) { return }
-    Write-Host (T 'closing')
+    Say (T 'closing')
     foreach ($p in $procs) { try { [void]$p.CloseMainWindow() } catch {} }   # polite first, so the app can flush its data
     for ($i = 0; $i -lt 16; $i++) { Start-Sleep -Milliseconds 250; if (-not @(Get-AppProcs)) { break } }
     @(Get-AppProcs) | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -194,23 +199,15 @@ function Stop-App {
 function Start-App {
     if ($TestMode -or $NoLaunch) { return }
     $app = Get-StartApps | Where-Object { $_.Name -eq 'Claude' } | Select-Object -First 1
-    if (-not $app) { Write-Host (T 'no_startapp'); return }
+    if (-not $app) { Say (T 'no_startapp'); return }
     Start-Process explorer.exe "shell:AppsFolder\$($app.AppID)"   # launched via explorer so the app is not our child
-    Write-Host (T 'reopened')
+    Say (T 'reopened')
 }
 
 # ---------------------------------------------------------------- profiles
 function Get-ProfileNames {
     if (-not (Test-Path $Profiles)) { return @() }
     @(Get-ChildItem $Profiles -Directory | Where-Object { $_.Name -notlike '*.tmp' } | Sort-Object Name | ForEach-Object Name)
-}
-function Get-Current {
-    if (Test-Path $StateFile) { return (Read-Json $StateFile).current }
-    return $null
-}
-function Set-Current($n) {
-    New-Item -ItemType Directory -Force $Store | Out-Null
-    Write-Utf8 $StateFile (@{ current = $n } | ConvertTo-Json)
 }
 function Get-ProfilePath([string]$n) {
     if ($n -notmatch '^[\w.-]{1,40}$') { Die (T 'bad_name') }
@@ -221,7 +218,24 @@ function Get-ProfileUuid([string]$n) {
     if (Test-Path $f) { return (Read-Json $f).lastKnownAccountUuid }
     return $null
 }
-function Get-LiveUuid { (Read-Json $Config).lastKnownAccountUuid }
+# What is signed in to the app right now? Read from the app's own config, never from our own bookkeeping,
+# so signing in/out by hand (outside this tool) is always noticed. A free account has no plan token, only the uuid.
+function Get-LiveInfo {
+    $r = [pscustomobject]@{ LoggedIn = $false; Uuid = $null }
+    if (-not $Config -or -not (Test-Path $Config)) { return $r }
+    try { $cfg = Read-Json $Config } catch { return $r }
+    $r.Uuid = $cfg.lastKnownAccountUuid
+    $r.LoggedIn = [bool]($r.Uuid -or $cfg.'oauth:tokenCacheV2' -or $cfg.'oauth:tokenCache')
+    return $r
+}
+function Get-LiveUuid { (Get-LiveInfo).Uuid }
+# Name of the saved profile that matches the signed-in account, or $null (signed out, or an account not saved yet).
+function Get-Current {
+    $u = (Get-LiveInfo).Uuid
+    if (-not $u) { return $null }
+    foreach ($n in Get-ProfileNames) { if ((Get-ProfileUuid $n) -eq $u) { return $n } }
+    return $null
+}
 
 function Copy-Dir([string]$src, [string]$dst) {
     if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
@@ -237,7 +251,7 @@ function Export-Login([string]$dest) {
     $cfg = Read-Json $Config
     $auth = [ordered]@{}
     foreach ($k in $AuthKeys) { if ($cfg.PSObject.Properties[$k]) { $auth[$k] = $cfg.$k } }
-    if (-not $auth['oauth:tokenCacheV2'] -and -not $auth['oauth:tokenCache']) { Die (T 'no_login') }
+    if (-not $auth['lastKnownAccountUuid'] -and -not $auth['oauth:tokenCacheV2'] -and -not $auth['oauth:tokenCache']) { Die (T 'no_login') }
     Write-Utf8 (Join-Path $dest 'auth.json') ($auth | ConvertTo-Json -Depth 5)
     foreach ($f in $AuthFiles) {
         $s = Join-Path $Data $f; $d = Join-Path $dest ('files\' + $f)
@@ -282,7 +296,8 @@ function Save-Profile([string]$n) {
     $p = Get-ProfilePath $n
     $tmp = "$p.tmp"
     if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
-    Export-Login $tmp
+    try { Export-Login $tmp }
+    catch { Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue; throw }   # never leave half-written profiles behind
     if (Test-Path $p) { Remove-Item $p -Recurse -Force }
     Move-Item $tmp $p
 }
@@ -297,10 +312,11 @@ function Assert-NotDuplicate([string]$n) {
 }
 
 function Backup-Now {
+    if (-not (Get-LiveInfo).LoggedIn) { return }   # signed out: nothing to protect
     $b = Join-Path $Backups (Get-Date -Format 'yyyyMMdd-HHmmss-fff')
     Export-Login $b
     Copy-Item $Config (Join-Path $b 'config.json.full') -Force
-    Write-Host (T 'backup' $b)
+    Say (T 'backup' $b)
     Get-ChildItem $Backups -Directory | Sort-Object Name -Descending | Select-Object -Skip $BackupsToKeep |
         ForEach-Object { Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
 }

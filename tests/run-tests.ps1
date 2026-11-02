@@ -14,6 +14,13 @@ function Login([string]$uuid, [string]$tag) {
     [IO.File]::WriteAllText("$data\config.json", ($cfg | ConvertTo-Json -Depth 5))
     Set-Content "$data\Network\Cookies" "cookie-$tag"; Set-Content "$data\Local Storage\x" "ls-$tag"
 }
+function LoginFree([string]$uuid) {   # signed in, but the account has no plan: the app stores no plan token
+    New-Item -ItemType Directory -Force "$data\Network" | Out-Null
+    [IO.File]::WriteAllText("$data\config.json", ([ordered]@{ theme = 'dark'; lastKnownAccountUuid = $uuid } | ConvertTo-Json))
+    Set-Content "$data\Network\Cookies" "cookie-free"
+}
+function Logout { [IO.File]::WriteAllText("$data\config.json", ([ordered]@{ theme = 'dark' } | ConvertTo-Json)); Remove-Item "$data\Network\Cookies" -ErrorAction SilentlyContinue }
+function Get-ProfileTok([string]$n) { (Get-Content "$env:DSWAP_STORE\profiles\$n\auth.json" -Raw | ConvertFrom-Json).'oauth:tokenCacheV2' }
 function Session([string]$uuid, [string]$org, [string]$name, [datetime]$when) {
     $d = "$data\claude-code-sessions\$uuid\$org"; New-Item -ItemType Directory -Force $d | Out-Null
     Set-Content "$d\$name.json" $name; (Get-Item "$d\$name.json").LastWriteTime = $when
@@ -74,13 +81,43 @@ try {
     Check 'list shows 3 accounts' (((Ds list).Out -split "`n" | Where-Object { $_ -match '\S' }).Count -eq 3)
     Check 'adding an account that already exists is refused' ((Ds add-begin a).Code -ne 0)
 
+    Write-Host 'free account (no plan token, only the account id)'
+    LoginFree 'uuid-F'
+    Check 'save free account' ((Ds save f).Code -eq 0)
+    Check 'free profile has no plan token' (-not (Get-Content "$env:DSWAP_STORE\profiles\f\auth.json" -Raw | ConvertFrom-Json).'oauth:tokenCacheV2')
+    Check 'switch a (leaving the free account)' ((Ds switch a).Code -eq 0)
+    Check 'switch back to the free account' ((Ds switch f).Code -eq 0)
+    Check 'plan token is gone, account id is the free one' ((-not (Cfg).'oauth:tokenCacheV2') -and (Cfg).lastKnownAccountUuid -eq 'uuid-F')
+
+    Write-Host 'signed out / signed in by hand'
+    Logout
+    Check 'list shows no current account while signed out' (-not ((Ds list).Out -match '\*'))
+    Check 'switching works while signed out' ((Ds switch a).Code -eq 0)
+    Check 'signed in as a' ((Cfg).'oauth:tokenCacheV2' -eq 'tok-A')
+    Login 'uuid-B' 'B2'   # user signs in to b by hand, outside the tool
+    Check 'current account is detected from the real login' ((Ds list).Out -match '\*\s+b\s')
+    Logout
+    Check 'saving while signed out fails' ((Ds save z).Code -ne 0)
+    Check '...and leaves no .tmp folder behind' (-not (Get-ChildItem "$env:DSWAP_STORE\profiles" -Filter '*.tmp' -ErrorAction SilentlyContinue))
+
     Write-Host 'safety'
-    Ds switch a | Out-Null
-    [IO.File]::WriteAllText("$env:DSWAP_STORE\state.json", '{"current":null}')
-    Check 'switch refused while current account is unnamed' ((Ds switch b).Code -ne 0)
-    Check 'switch with -Force works' ((Ds switch b -Force).Code -eq 0)
+    Login 'uuid-X' 'X'   # an account that was never saved
+    Check 'switch refused while the signed-in account is unsaved' ((Ds switch b).Code -ne 0)
+    Check 'login untouched after the refusal' ((Cfg).'oauth:tokenCacheV2' -eq 'tok-X')
+    Check 'switch with -SaveAs stores it first' ((Ds switch b -SaveAs x).Code -eq 0)
+    Check 'x was saved' ((Get-ProfileTok 'x') -eq 'tok-X')
+    Login 'uuid-Y' 'Y'
+    Check '-SaveAs refuses a name that already exists' ((Ds switch b -SaveAs a).Code -ne 0)
     1..12 | ForEach-Object { Ds switch a | Out-Null; Ds switch b | Out-Null }
     Check 'backups are pruned to 10' ((Get-ChildItem "$env:DSWAP_STORE\backups" -Directory).Count -le 10)
+
+    Write-Host 'messages reach the tray as UTF-8'
+    Login 'uuid-X2' 'X2'
+    $env:DSWAP_RESULT = Join-Path $root 'result.txt'; $env:DSWAP_LANG = 'pt'
+    [void](Ds switch b)
+    $txt = [IO.File]::ReadAllText($env:DSWAP_RESULT, [Text.Encoding]::UTF8)
+    Remove-Item Env:\DSWAP_RESULT; $env:DSWAP_LANG = 'en'
+    Check 'accented text is intact in the result file' ($txt -match 'não' -and $txt -match '^ERROR:' )
 
     Write-Host 'remove'
     Check 'remove c' ((Ds remove c).Code -eq 0)

@@ -36,12 +36,32 @@ function New-TrayIcon([string]$label) {
     [Drawing.Icon]::FromHandle($bmp.GetHicon())
 }
 
+$script:iconKey = $null
 function Update-Icon {
     $cur = Get-Current
+    $key = "$cur"
+    if ($key -eq $script:iconKey -and $ni.Icon) { return }   # unchanged: do not rebuild the icon
+    $script:iconKey = $key
     $old = $ni.Icon
     $ni.Icon = New-TrayIcon $(if ($cur) { $cur.Substring(0, 1).ToUpper() } else { '?' })
     $ni.Text = if ($cur) { "Claude: $cur" } else { 'Claude' }
     if ($old) { $old.Dispose() }
+}
+
+# Accounts are identified by what the app is really signed in to, so signing in by hand is noticed too.
+$iconTimer = New-Object Windows.Forms.Timer
+$iconTimer.Interval = 5000
+$iconTimer.add_Tick({ try { Update-Icon } catch {} })
+
+# An account that is signed in but was never saved has to be named before it can be replaced.
+function Get-SaveAsArgs {
+    if ((Get-LiveInfo).LoggedIn -and -not (Get-Current)) {
+        $n = Ask-Name (T 'p_save')
+        if (-not $n) { return [pscustomobject]@{ Cancel = $true; Args = @() } }
+        if ((Get-ProfileNames) -contains $n) { Show-Balloon (T 'exists' $n) 'Warning'; return [pscustomobject]@{ Cancel = $true; Args = @() } }
+        return [pscustomobject]@{ Cancel = $false; Args = @('-SaveAs', $n); Name = $n }
+    }
+    return [pscustomobject]@{ Cancel = $false; Args = @() }
 }
 
 function Show-Balloon([string]$text, [string]$icon = 'Info', [int]$ms = 3000) { $ni.ShowBalloonTip($ms, (T 'title'), $text, $icon) }
@@ -65,8 +85,9 @@ function Ask-Name([string]$prompt) {
 function Start-Dswap([string[]]$dargs, [string]$what, [scriptblock]$then = $null) {
     if ($script:proc -and -not $script:proc.HasExited) { Show-Balloon (T 'b_busy'); return }
     $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$dswap`"") + $dargs
-    Remove-Item $LogFile, "$LogFile.err" -ErrorAction SilentlyContinue
-    $script:proc = Start-Process powershell.exe -ArgumentList $a -WindowStyle Hidden -PassThru -RedirectStandardOutput $LogFile -RedirectStandardError "$LogFile.err"
+    Remove-Item $LogFile, "$LogFile.out", "$LogFile.err" -ErrorAction SilentlyContinue
+    $env:DSWAP_RESULT = $LogFile   # dswap writes its messages here as UTF-8 (the console output is in the OEM code page)
+    $script:proc = Start-Process powershell.exe -ArgumentList $a -WindowStyle Hidden -PassThru -RedirectStandardOutput "$LogFile.out" -RedirectStandardError "$LogFile.err"
     $null = $script:proc.Handle   # without this, ExitCode can come back empty for a fast-exiting process and a success looks like a failure
     $script:what = $what
     $script:then = $then
@@ -80,13 +101,13 @@ $timer.add_Tick({
         $then = $script:then; $script:then = $null
         $code = $script:proc.ExitCode
         if ($code -eq 0 -or $null -eq $code) {   # empty code = the process ended cleanly but we could not read it; failures always print an ERROR line (checked below)
-            $errLine = @(Get-Content $LogFile -ErrorAction SilentlyContinue | Where-Object { $_ -match '^ERROR:' }) | Select-Object -Last 1
+            $errLine = @(Get-Content $LogFile -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { $_ -match '^ERROR:' }) | Select-Object -Last 1
             if ($errLine) { Show-Balloon (T 'b_failed' ("$errLine" -replace '^ERROR:\s*', '')) 'Error' 8000; return }
             if ($script:what) { Show-Balloon $script:what }
             if ($then) { & $then }
         }
         else {
-            $err = @(Get-Content $LogFile -ErrorAction SilentlyContinue | Where-Object { $_ -match '\S' }) | Select-Object -Last 1
+            $err = @(Get-Content $LogFile -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { $_ -match '\S' }) | Select-Object -Last 1
             Show-Balloon (T 'b_failed' ("$err" -replace '^ERROR:\s*', '')) 'Error' 8000
         }
     }
@@ -94,19 +115,20 @@ $timer.add_Tick({
 
 # ---- add account: begin -> user signs in -> finish (or cancel -> back to the old account)
 function Invoke-AddAccount {
-    $cur = Get-Current
-    if (-not $cur) { Show-Balloon (T 'unnamed') 'Warning' 6000; return }
     $name = Ask-Name (T 'p_add')
     if (-not $name) { return }
     if ((Get-ProfileNames) -contains $name) { Show-Balloon (T 'exists' $name) 'Warning'; return }
-    if ((Show-Msg (T 'p_add_intro' $cur)) -ne 'OK') { return }
-    $script:addName = $name; $script:addOld = $cur
-    Start-Dswap @('add-begin', $name) '' {
-        if ((Show-Msg (T 'p_add_wait' $script:addOld)) -eq 'OK') {
+    if ((Show-Msg (T 'p_add_intro')) -ne 'OK') { return }
+    $sa = Get-SaveAsArgs
+    if ($sa.Cancel) { return }
+    $script:addName = $name
+    $script:addOld = if ($sa.Name) { $sa.Name } else { Get-Current }   # $null when nothing was signed in
+    Start-Dswap (@('add-begin', $name) + $sa.Args) '' {
+        if ((Show-Msg (T 'p_add_wait')) -eq 'OK') {
             Start-Dswap @('add-finish', $script:addName) (T 'add_done' $script:addName)
         }
-        else {
-            Start-Dswap @('switch', $script:addOld, '-Force') (T 'switched' $script:addOld)
+        elseif ($script:addOld) {
+            Start-Dswap @('switch', $script:addOld) (T 'switched' $script:addOld)
         }
     }
 }
@@ -117,16 +139,20 @@ function Set-StartWithWindows([bool]$on) {
 
 $menu.add_Opening({
     $menu.Items.Clear()
+    Update-Icon
     $cur = Get-Current
     $names = Get-ProfileNames
     $h = $menu.Items.Add((T 'm_switch')); $h.Enabled = $false
     foreach ($n in $names) {
         $it = $menu.Items.Add($n); $it.Tag = $n; $it.Checked = ($n -eq $cur)
         $it.add_Click({ param($s, $e)
-            if ($s.Tag -ne (Get-Current)) { Start-Dswap @('switch', $s.Tag) (T 'switched' $s.Tag) }
+            if ($s.Tag -eq (Get-Current)) { return }
+            $sa = Get-SaveAsArgs
+            if ($sa.Cancel) { return }
+            Start-Dswap (@('switch', $s.Tag) + $sa.Args) (T 'switched' $s.Tag)
         })
     }
-    if (-not $cur) {
+    if (-not $cur -and (Get-LiveInfo).LoggedIn) {
         $it = $menu.Items.Add((T 'm_save'))
         $it.add_Click({
             $n = Ask-Name (T 'p_save')
@@ -161,6 +187,7 @@ $ni.add_MouseClick({ param($s, $e)
 })
 
 Update-Icon
+$iconTimer.Start()
 $ni.Visible = $true
 if (-not $Data) { Show-Balloon (T 'no_claude') 'Error' 8000 }
 elseif (-not (Get-ProfileNames)) { Show-Balloon ((T 'b_first_run') + ' ' + (T 'b_hint')) 'Info' 10000 }

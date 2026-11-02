@@ -12,6 +12,8 @@
 - **Quantas contas quiser.** Adicionar é um passo guiado, sem terminal.
 - **Compartilha as sessões da aba Code entre as contas** automaticamente a cada troca (dá para desligar no menu), então você não perde o histórico de conversas locais.
 - **Sem perguntas a cada troca.** Troca, reabre o app, pronto.
+- **Sabe sozinho qual conta está logada**, mesmo que você tenha entrado à mão, e funciona com **contas sem plano (gratuitas)**.
+- Se a conta logada ainda não foi salva, ele pede um nome na hora da troca para não perder o login.
 - **Backup automático** antes de cada troca (guarda os 10 últimos).
 - Abre junto com o Windows (opcional).
 
@@ -52,6 +54,7 @@ O app guarda seu login em arquivos locais (`config.json`, cookies e armazenament
 - Testado com a versão da **Microsoft Store/MSIX** do Claude Desktop. O instalador clássico (`%APPDATA%\Claude`) é detectado, mas não foi testado.
 - Só Windows. Uma atualização do app pode mudar onde/como o login é guardado e quebrar a ferramenta; abra uma issue se acontecer.
 - A troca fecha o app (primeiro de forma educada, depois à força). Salve o que estiver fazendo antes.
+- **Instale com dois cliques no `Install.cmd`, fora do app Claude.** Se você instalar abrindo um terminal de dentro do app, o ícone da bandeja morre junto quando o app fecha na primeira troca.
 
 ## Linha de comando (opcional)
 
@@ -91,6 +94,8 @@ A Windows tray icon to switch accounts in the **Claude Desktop app** with one cl
 **Not shared:** claude.ai chats, memory, preferences, styles and projects live on the server and stay with each account. Code-tab session *lists* are synced (transcripts in `~/.claude/projects` are already shared); sessions deleted in one account may reappear on the next switch.
 
 **Security:** no network calls; treat `%USERPROFILE%\.claude-desktop-swap` like a password.
+
+**Also:** it detects which account is signed in by itself (even if you signed in by hand) and works with accounts that have no plan. Install by double-clicking `Install.cmd` *outside* the Claude app; if installed from a terminal inside the app, the tray icon dies when the app closes on the first switch.
 
 **Limitations:** tested with the Microsoft Store (MSIX) build only; the classic installer path is detected but untested. Windows only. An app update may change how login is stored and break this.
 
